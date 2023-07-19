@@ -65,7 +65,7 @@ bool keyboard_data[6][6];
 
 bool temp_keyboard_data[6][6];
 
-uint32_t scan_passed_count = 0;
+// uint32_t scan_passed_count = 0;
 
 void KeyboardInit()
 {
@@ -93,12 +93,36 @@ void KeyboardScan()
     for (size_t i = 0; i < 6; i++)
     {
         GPIO_WriteBit(GPIO_KBD_IN[i], PIN_KBD_IN[i], Bit_SET);
+        Delay_Us(1);
         for (size_t j = 0; j < 6; j++)
         {
             keyboard_data[i][j] = (bool)(GPIO_ReadInputDataBit(GPIO_KBD_OUT[j], PIN_KBD_OUT[j]));
         }
         GPIO_WriteBit(GPIO_KBD_IN[i], PIN_KBD_IN[i], Bit_RESET);
     }
+}
+
+void serialInit()
+{
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD | RCC_APB2Periph_USART1, ENABLE);
+    // UART1: PD5 tx, PD6 rx
+    _gpio_init(GPIOD, GPIO_Pin_5, GPIO_Mode_AF_PP, GPIO_Speed_50MHz);
+    _gpio_init(GPIOD, GPIO_Pin_6, GPIO_Mode_IN_FLOATING, GPIO_Speed_50MHz);
+    // struct
+    USART_InitTypeDef USART_InitStructure = {0};
+    USART_InitStructure.USART_BaudRate = 115200;
+    USART_InitStructure.USART_WordLength = USART_WordLength_9b;
+    USART_InitStructure.USART_StopBits = USART_StopBits_1;
+    USART_InitStructure.USART_Parity = USART_Parity_No;
+    USART_InitStructure.USART_HardwareFlowControl =
+        USART_HardwareFlowControl_None;
+    USART_InitStructure.USART_Mode = USART_Mode_Tx | USART_Mode_Rx;
+    USART_Init(USART1, &USART_InitStructure);
+    USART_Cmd(USART1, ENABLE);
+    // USART_SetAddress(USART1, 0x1);
+    // USART_WakeUpConfig(USART1, USART_WakeUp_AddressMark);
+    // USART_ReceiverWakeUpCmd(USART1, ENABLE);
+    // USART_SetAddress(USART3, 0x2);
 }
 
 void SendKeyboardEvent(uint8_t key_code, uint8_t event)
@@ -116,36 +140,67 @@ void IWDG_Feed_Init(u16 prer, u16 rlr)
     IWDG_Enable();
 }
 
+void writeBit(uint8_t *x, size_t i, uint8_t v)
+{
+    if (v == 0)
+    {
+        *x &= ~(1 << i);
+    }
+    else
+    {
+        *x |= (1 << i);
+    }
+}
+
+void sendKeyInfo(uint8_t x)
+{
+    if (x > 5)
+    {
+        x = 5;
+    }
+    uint8_t r = 0;
+    for (size_t j = 0; j < 6; j++)
+    {
+        writeBit(&r, j, keyboard_data[x][j]);
+    }
+    // USART_SendData(USART1, 0x102);
+    // while (USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET)
+    // {
+    // }
+    USART_SendData(USART1, r);
+    while (USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET)
+    {
+    }
+    Delay_Us(100);
+    // putchar(r);
+    // USART_ClearFlag(USART1, USART_FLAG_TC);
+}
+
+void processCommand()
+{
+    if (USART_GetFlagStatus(USART1, USART_FLAG_RXNE) == SET)
+    {
+        uint8_t u1_dt = USART_ReceiveData(USART1);
+        if (u1_dt == 123)
+        {
+            sendKeyInfo(0);
+            sendKeyInfo(1);
+            sendKeyInfo(2);
+            sendKeyInfo(3);
+            sendKeyInfo(4);
+            sendKeyInfo(5);
+        }
+        USART_ClearFlag(USART1, USART_FLAG_RXNE);
+    }
+}
+
 int MainProcess()
 {
     while (1)
     {
         KeyboardScan();
-        scan_passed_count++;
-        for (size_t i = 0; i < 6; i++)
-        {
-            for (size_t j = 0; j < 6; j++)
-            {
-                if (keyboard_data[i][j] != temp_keyboard_data[i][j])
-                {
-                    SendKeyboardEvent(i * 6 + j, keyboard_data[i][j] ? KBD_EVENT_PRESSED : KBD_EVENT_RELEASED);
-                    scan_passed_count = 0;
-                }
-                temp_keyboard_data[i][j] = keyboard_data[i][j];
-            }
-        }
-        if (scan_passed_count > 1200)
-        {
-            // SendKeyboardEvent(0, KBD_EVENT_PING);
-            for (size_t i = 0; i < 6; i++)
-            {
-                for (size_t j = 0; j < 6; j++)
-                {
-                    SendKeyboardEvent(i * 6 + j, keyboard_data[i][j] ? KBD_EVENT_PRESSED : KBD_EVENT_RELEASED);
-                }
-            }
-            scan_passed_count = 0;
-        }
+        processCommand();
+        Delay_Us(1);
         IWDG_ReloadCounter();
     }
     for (;;)
@@ -163,6 +218,7 @@ int main()
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOA, ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC, ENABLE);
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOD, ENABLE);
+    // return 0;
     // ---
     // init
     for (size_t i = 0; i < 6; i++)
@@ -174,7 +230,8 @@ int main()
         }
     }
     KeyboardInit();
-    USART_Printf_Init(115200);
+    // USART_Printf_Init(115200);
+    serialInit();
     IWDG_ReloadCounter();
     // ---
     return MainProcess();
