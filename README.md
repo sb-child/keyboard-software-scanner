@@ -1,5 +1,9 @@
 # Keyboard (software part - key scanner)
 
+hardware part
+
+- https://github.com/sb-child/keyboard-hardware
+
 ## build
 
 - install vscode, then install platformio plugin
