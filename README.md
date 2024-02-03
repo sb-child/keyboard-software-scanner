@@ -12,7 +12,7 @@ hardware part
 
 ## upload
 
-this firmware need to upload to MCU on the **2nd** and the **6rd** board.
+this firmware need to upload to MCU on the **2nd** and the **6th** board.
 
 you need to prepare a `WCH-LinkE-R0-1v3` debugger, and solder three wires `VCC, GND, SWDIO` from the board which need to upload, and connect the wires to the debugger
 
